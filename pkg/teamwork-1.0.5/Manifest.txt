@@ -1,8 +1,0 @@
-.autotest
-History.txt
-Manifest.txt
-README.txt
-Rakefile
-bin/teamwork
-lib/teamwork.rb
-test/test_teamwork.rb

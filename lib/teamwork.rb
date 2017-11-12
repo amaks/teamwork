@@ -21,6 +21,7 @@ module Teamwork
 
       @api_conn.headers[:cache_control] = 'no-cache'
       @api_conn.basic_auth(api_key, '')
+      @api_conn = ResponseChecker.new @api_conn
     end
 
     def account(request_params)
@@ -92,7 +93,7 @@ module Teamwork
 
     def update_company(company_id, name)
       company = @api_conn.put("companies/#{company_id}.json", {
-        "company": {
+        "company" => {
           id: company_id,
           name: name
         }
@@ -108,12 +109,12 @@ module Teamwork
       result = {}
       company_id = get_or_create_company(client_name)
       project_id = @api_conn.post('projects.json', {
-          project: {
-              name: name,
-              companyId: company_id,
-              "category-id" => '0',
-              includePeople: false
-          }
+        project: {
+          name: name,
+          companyId: company_id,
+          "category-id" => '0',
+          includePeople: false
+        }
       }).headers['id']
       result[:project_id] = project_id
       result[:company_id] = company_id
@@ -123,11 +124,11 @@ module Teamwork
     def update_project(id, name, client_name, status)
       company_id = get_or_create_company(client_name)
       @api_conn.put("projects/#{id}.json", {
-          project: {
-              name: name,
-              companyId: company_id,
-              status: status
-          }
+        project: {
+          name: name,
+          companyId: company_id,
+          status: status
+        }
       }).status
     end
 
@@ -154,14 +155,82 @@ module Teamwork
       })
     end
 
+    def get_task_lists(project_id)
+      responses = @api_conn.get "/projects/#{project_id}/tasklists.json"
+
+      responses.body
+    end
+
     def get_tasks(project_id)
       @api_conn.get "/projects/#{project_id}/tasks.json"
+    end
+
+    def add_task_to_tasklist(task_list_id, task_data)
+      response = @api_conn.post "/tasklists/#{task_list_id}/tasks.json", { 'todo-item' => task_data }
+
+      response.body
+    end
+
+    def add_comment_to_task(task_id, comment_data)
+      @api_conn.post "/tasks/#{task_id}/comments.json", { comment: comment_data }
+    end
+
+    def upload_file(file_path)
+      payload = { :file => Faraday::UploadIO.new(file_path, 'image/jpeg') }
+      @api_conn.post "/pendingfiles.json", payload
+    end
+
+    def add_file_to_task(task_id, attachment_ref)
+      @api_conn.post "/tasks/#{task_id}/files.json", {
+        "task" => {
+          "pendingFileAttachments" => [attachment_ref],
+          "updateFiles" => true,
+          "removeOtherFiles" => false,
+          "attachments" => "",
+          "attachmentsCategoryIds" => "",
+          "pendingFileAttachmentsCategoryIds" => "0"
+        }
+      }
     end
 
     def attach_post_to_project(title, body, project_id)
       @api_conn.post "projects/#{project_id}/posts.json", { post: { title: title, body: body } }
     end
   end
+  class ResponseChecker
+    attr_accessor :client
+
+    def initialize(client)
+      @client = client
+    end
+
+    def method_missing(sym, *args, &block)
+      response = client.send sym, *args, &block
+      unless response.success?
+        raise Teamwork::Errors::Unreachable.new(response.status), "Can't reach teamwork (#{response.status}) - Make sure that token and site name are correct" if response.body.nil?
+        raise Teamwork::Errors::BadRequest.new(response.status), "#{args.join ' '} \n\r #{response.body['MESSAGE'] || response.body['CONTENT']['MESSAGE']}"
+      end
+
+      response
+    end
+  end
+  module Errors
+    class Error < StandardError
+      attr_accessor :code
+    end
+    class Unreachable < Error
+      def initialize(code)
+        @code = code
+      end
+    end
+
+    class BadRequest < Error
+      def initialize(code)
+        @code = code
+      end
+    end
+  end
+
 end
 
 
