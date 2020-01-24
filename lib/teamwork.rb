@@ -29,6 +29,12 @@ module Teamwork
       response.body
     end
 
+    # TODO new request
+    def project_time_totals(id, request_params)
+      response = @api_conn.get "projects/#{id}/time/total.json", request_params
+      response.body
+    end
+
     def people(request_params = nil)
       response = @api_conn.get "people.json", request_params
       response.body
